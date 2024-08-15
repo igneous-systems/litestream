@@ -22,6 +22,7 @@ import (
 	"github.com/benbjohnson/litestream/internal"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"modernc.org/sqlite"
 )
 
 // Default DB settings.
@@ -415,10 +416,24 @@ func (db *DB) init() (err error) {
 
 	// Connect to SQLite database. Use the driver registered with a hook to
 	// prevent WAL files from being removed.
-	if db.db, err = sql.Open("litestream-sqlite3", dsn); err != nil {
+	if db.db, err = sql.Open("sqlite", dsn); err != nil {
 		return err
 	}
-
+	conn, err := db.db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	err = conn.Raw(func(dc any) error {
+		fc, _ := dc.(sqlite.FileControl)
+		_, err := fc.FileControlPersistWAL("main", 1)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if _, err = db.db.Exec("PRAGMA locking_mode = EXCLUSIVE;"); err != nil {
+		return err
+	}
 	// Open long-running database file descriptor. Required for non-OFD locks.
 	if db.f, err = os.Open(db.path); err != nil {
 		return fmt.Errorf("open db file descriptor: %w", err)
@@ -427,6 +442,7 @@ func (db *DB) init() (err error) {
 	// Ensure database is closed if init fails.
 	// Initialization can retry on next sync.
 	defer func() {
+		db.db.Exec("PRAGMA locking_mode = NORMAL;")
 		if err != nil {
 			_ = db.releaseReadLock()
 			db.db.Close()
@@ -1487,12 +1503,27 @@ func applyWAL(ctx context.Context, index int, dbPath string) error {
 	}
 
 	// Open SQLite database and force a truncating checkpoint.
-	d, err := sql.Open("sqlite3", dbPath)
+	d, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return err
 	}
+	conn, err := d.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	err = conn.Raw(func(dc any) error {
+		fc, _ := dc.(sqlite.FileControl)
+		_, err := fc.FileControlPersistWAL("main", 1)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if _, err = d.Exec("PRAGMA locking_mode = EXCLUSIVE;"); err != nil {
+		return err
+	}
 	defer d.Close()
-
+	defer d.Exec("PRAGMA locking_mode = NORMAL;")
 	var row [3]int
 	if err := d.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE);`).Scan(&row[0], &row[1], &row[2]); err != nil {
 		return err
