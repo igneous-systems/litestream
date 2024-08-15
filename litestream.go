@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
+	"modernc.org/sqlite"
 )
 
 // Naming constants.
@@ -53,14 +53,16 @@ var (
 )
 
 func init() {
-	sql.Register("litestream-sqlite3", &sqlite3.SQLiteDriver{
-		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			if err := conn.SetFileControlInt("main", sqlite3.SQLITE_FCNTL_PERSIST_WAL, 1); err != nil {
-				return fmt.Errorf("cannot set file control: %w", err)
-			}
-			return nil
-		},
+	// provide sqlite3 as an alias to sqlite
+	sql.Register("sqlite3", &sqlite.Driver{})
+
+	// provide litestream-sqlite3 as a driver with persist WAL enabled
+	var driver sqlite.Driver
+	driver.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
+		_, err := conn.(sqlite.FileControl).FileControlPersistWAL("main", 1)
+		return err
 	})
+	sql.Register("litestream-sqlite3", &driver)
 }
 
 // SnapshotIterator represents an iterator over a collection of snapshot metadata.
