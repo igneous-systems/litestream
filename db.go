@@ -431,9 +431,6 @@ func (db *DB) init() (err error) {
 		}
 		return nil
 	})
-	if _, err = db.db.Exec("PRAGMA locking_mode = EXCLUSIVE;"); err != nil {
-		return err
-	}
 	// Open long-running database file descriptor. Required for non-OFD locks.
 	if db.f, err = os.Open(db.path); err != nil {
 		return fmt.Errorf("open db file descriptor: %w", err)
@@ -442,7 +439,6 @@ func (db *DB) init() (err error) {
 	// Ensure database is closed if init fails.
 	// Initialization can retry on next sync.
 	defer func() {
-		db.db.Exec("PRAGMA locking_mode = NORMAL;")
 		if err != nil {
 			_ = db.releaseReadLock()
 			db.db.Close()
@@ -1519,11 +1515,7 @@ func applyWAL(ctx context.Context, index int, dbPath string) error {
 		}
 		return nil
 	})
-	if _, err = d.Exec("PRAGMA locking_mode = EXCLUSIVE;"); err != nil {
-		return err
-	}
 	defer d.Close()
-	defer d.Exec("PRAGMA locking_mode = NORMAL;")
 	var row [3]int
 	if err := d.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE);`).Scan(&row[0], &row[1], &row[2]); err != nil {
 		return err
