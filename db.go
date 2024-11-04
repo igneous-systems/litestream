@@ -22,6 +22,7 @@ import (
 	"github.com/benbjohnson/litestream/internal"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"modernc.org/sqlite"
 )
 
 // Default DB settings.
@@ -415,10 +416,22 @@ func (db *DB) init() (err error) {
 
 	// Connect to SQLite database. Use the driver registered with a hook to
 	// prevent WAL files from being removed.
-	if db.db, err = sql.Open("litestream-sqlite3", dsn); err != nil {
+	if db.db, err = sql.Open("sqlite", dsn); err != nil {
 		return err
 	}
-
+	conn, err := db.db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	err = conn.Raw(func(dc any) error {
+		fc, _ := dc.(sqlite.FileControl)
+		_, err := fc.FileControlPersistWAL("main", 1)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	// Open long-running database file descriptor. Required for non-OFD locks.
 	if db.f, err = os.Open(db.path); err != nil {
 		return fmt.Errorf("open db file descriptor: %w", err)
@@ -1487,12 +1500,24 @@ func applyWAL(ctx context.Context, index int, dbPath string) error {
 	}
 
 	// Open SQLite database and force a truncating checkpoint.
-	d, err := sql.Open("sqlite3", dbPath)
+	d, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return err
 	}
+	conn, err := d.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	err = conn.Raw(func(dc any) error {
+		fc, _ := dc.(sqlite.FileControl)
+		_, err := fc.FileControlPersistWAL("main", 1)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	defer d.Close()
-
 	var row [3]int
 	if err := d.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE);`).Scan(&row[0], &row[1], &row[2]); err != nil {
 		return err
