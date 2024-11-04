@@ -423,6 +423,7 @@ func (db *DB) init() (err error) {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	err = conn.Raw(func(dc any) error {
 		fc, _ := dc.(sqlite.FileControl)
 		_, err := fc.FileControlPersistWAL("main", 1)
@@ -1507,6 +1508,7 @@ func applyWAL(ctx context.Context, index int, dbPath string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	err = conn.Raw(func(dc any) error {
 		fc, _ := dc.(sqlite.FileControl)
 		_, err := fc.FileControlPersistWAL("main", 1)
