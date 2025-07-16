@@ -1,6 +1,7 @@
 package litestream
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -1353,6 +1354,7 @@ func (r *Replica) restoreSnapshot(ctx context.Context, generation string, index 
 	return f.Close()
 }
 
+
 // downloadWAL copies a WAL file from the replica to a local copy next to the DB.
 // The WAL is later applied by applyWAL(). This function can be run in parallel
 // to download multiple WAL files simultaneously.
@@ -1366,9 +1368,11 @@ func (r *Replica) downloadWAL(ctx context.Context, generation string, index int,
 	// Open readers for every segment in the WAL file, in order.
 	var readers []io.Reader
 	for _, offset := range offsets {
+	retry:
+
 		rd, err := r.Client.WALSegmentReader(ctx, Pos{Generation: generation, Index: index, Offset: offset})
 		if err != nil {
-			return err
+			goto retry  // XXX only retry
 		}
 		defer rd.Close()
 
@@ -1381,7 +1385,14 @@ func (r *Replica) downloadWAL(ctx context.Context, generation string, index int,
 			rd = io.NopCloser(drd)
 		}
 
-		readers = append(readers, lz4.NewReader(rd))
+	   r := lz4.NewReader(rd)
+	   buf, err := io.ReadAll(r)
+	   if err != nil {
+				   goto retry // XXX only retry transient
+		   }
+	  _ = rd.Close()
+
+		   readers = append(readers, bytes.NewReader(buf))
 	}
 
 	// Open handle to destination WAL path.
@@ -1399,6 +1410,7 @@ func (r *Replica) downloadWAL(ctx context.Context, generation string, index int,
 	}
 	return nil
 }
+
 
 // Replica metrics.
 var (
