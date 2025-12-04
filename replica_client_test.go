@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/benbjohnson/litestream"
-	"github.com/benbjohnson/litestream/abs"
 	"github.com/benbjohnson/litestream/file"
 	"github.com/benbjohnson/litestream/gcs"
 	"github.com/benbjohnson/litestream/s3"
@@ -48,14 +47,6 @@ var (
 var (
 	gcsBucket = flag.String("gcs-bucket", os.Getenv("LITESTREAM_GCS_BUCKET"), "")
 	gcsPath   = flag.String("gcs-path", os.Getenv("LITESTREAM_GCS_PATH"), "")
-)
-
-// Azure blob storage settings
-var (
-	absAccountName = flag.String("abs-account-name", os.Getenv("LITESTREAM_ABS_ACCOUNT_NAME"), "")
-	absAccountKey  = flag.String("abs-account-key", os.Getenv("LITESTREAM_ABS_ACCOUNT_KEY"), "")
-	absBucket      = flag.String("abs-bucket", os.Getenv("LITESTREAM_ABS_BUCKET"), "")
-	absPath        = flag.String("abs-path", os.Getenv("LITESTREAM_ABS_PATH"), "")
 )
 
 // SFTP settings
@@ -482,8 +473,6 @@ func NewReplicaClient(tb testing.TB, typ string) litestream.ReplicaClient {
 		return NewS3ReplicaClient(tb)
 	case gcs.ReplicaClientType:
 		return NewGCSReplicaClient(tb)
-	case abs.ReplicaClientType:
-		return NewABSReplicaClient(tb)
 	case sftp.ReplicaClientType:
 		return NewSFTPReplicaClient(tb)
 	default:
@@ -521,18 +510,6 @@ func NewGCSReplicaClient(tb testing.TB) *gcs.ReplicaClient {
 	c := gcs.NewReplicaClient()
 	c.Bucket = *gcsBucket
 	c.Path = path.Join(*gcsPath, fmt.Sprintf("%016x", rand.Uint64()))
-	return c
-}
-
-// NewABSReplicaClient returns a new client for integration testing.
-func NewABSReplicaClient(tb testing.TB) *abs.ReplicaClient {
-	tb.Helper()
-
-	c := abs.NewReplicaClient()
-	c.AccountName = *absAccountName
-	c.AccountKey = *absAccountKey
-	c.Bucket = *absBucket
-	c.Path = path.Join(*absPath, fmt.Sprintf("%016x", rand.Uint64()))
 	return c
 }
 

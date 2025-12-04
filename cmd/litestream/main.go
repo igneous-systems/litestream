@@ -19,7 +19,6 @@ import (
 
 	"filippo.io/age"
 	"github.com/benbjohnson/litestream"
-	"github.com/benbjohnson/litestream/abs"
 	"github.com/benbjohnson/litestream/file"
 	"github.com/benbjohnson/litestream/gcs"
 	"github.com/benbjohnson/litestream/s3"
@@ -425,10 +424,6 @@ func NewReplicaFromConfig(c *ReplicaConfig, db *litestream.DB) (_ *litestream.Re
 		if r.Client, err = newGCSReplicaClientFromConfig(c, r); err != nil {
 			return nil, err
 		}
-	case "abs":
-		if r.Client, err = newABSReplicaClientFromConfig(c, r); err != nil {
-			return nil, err
-		}
 	case "sftp":
 		if r.Client, err = newSFTPReplicaClientFromConfig(c, r); err != nil {
 			return nil, err
@@ -570,49 +565,6 @@ func newGCSReplicaClientFromConfig(c *ReplicaConfig, r *litestream.Replica) (_ *
 	client := gcs.NewReplicaClient()
 	client.Bucket = bucket
 	client.Path = path
-	return client, nil
-}
-
-// newABSReplicaClientFromConfig returns a new instance of abs.ReplicaClient built from config.
-func newABSReplicaClientFromConfig(c *ReplicaConfig, r *litestream.Replica) (_ *abs.ReplicaClient, err error) {
-	// Ensure URL & constituent parts are not both specified.
-	if c.URL != "" && c.Path != "" {
-		return nil, fmt.Errorf("cannot specify url & path for abs replica")
-	} else if c.URL != "" && c.Bucket != "" {
-		return nil, fmt.Errorf("cannot specify url & bucket for abs replica")
-	}
-
-	// Build replica.
-	client := abs.NewReplicaClient()
-	client.AccountName = c.AccountName
-	client.AccountKey = c.AccountKey
-	client.Bucket = c.Bucket
-	client.Path = c.Path
-	client.Endpoint = c.Endpoint
-
-	// Apply settings from URL, if specified.
-	if c.URL != "" {
-		u, err := url.Parse(c.URL)
-		if err != nil {
-			return nil, err
-		}
-
-		if client.AccountName == "" && u.User != nil {
-			client.AccountName = u.User.Username()
-		}
-		if client.Bucket == "" {
-			client.Bucket = u.Host
-		}
-		if client.Path == "" {
-			client.Path = strings.TrimPrefix(path.Clean(u.Path), "/")
-		}
-	}
-
-	// Ensure required settings are set.
-	if client.Bucket == "" {
-		return nil, fmt.Errorf("bucket required for abs replica")
-	}
-
 	return client, nil
 }
 
